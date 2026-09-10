@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Football Live Ribbon — NFL + College</title>
+<style>
+  :root{
+    --bg:#050608;
+    --panel:#0c0f14;
+    --panel2:#10151d;
+    --text:#f8fafc;
+    --muted:#98a2b3;
+    --line:#242b36;
+    --live:#ff3b3b;
+    --ok:#4ade80;
+    --ticker-speed:72s;
+    --scale:1;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;overflow:hidden}
+  body{display:flex;flex-direction:column}
+  .top{
+    height:11vh;min-height:74px;display:flex;align-items:center;padding:0 2vw;gap:16px;
+    background:#080a0e;border-bottom:1px solid var(--line)
+  }
+  .title{font-size:clamp(24px,2.3vw,42px);font-weight:1000;letter-spacing:.05em}
+  .title small{font-size:.48em;color:var(--muted);font-weight:800;letter-spacing:.08em;margin-left:8px}
+  .controls{margin-left:auto;display:flex;gap:8px;align-items:center}
+  button{
+    border:1px solid #354052;background:#151a22;color:#fff;border-radius:10px;
+    padding:10px 12px;font-size:14px;font-weight:900;cursor:pointer
+  }
+  button.active{background:#f4f7fb;color:#090b0f;border-color:#f4f7fb}
+  .clock{width:102px;text-align:right;color:var(--muted);font-weight:800;font-variant-numeric:tabular-nums}
+  .ticker-wrap{flex:1;display:flex;align-items:center;position:relative;min-height:0;background:linear-gradient(180deg,#07090c,#050608)}
+  .rail-label{
+    width:118px;min-width:118px;height:100%;z-index:10;background:#0b0f15;border-right:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;box-shadow:18px 0 40px rgba(0,0,0,.45)
+  }
+  .rail-label strong{font-size:28px;letter-spacing:.04em}
+  .rail-label span{font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.16em}
+  .viewport{position:absolute;left:118px;right:0;top:0;bottom:0;overflow:hidden;display:flex;align-items:center}
+  .track{display:flex;width:max-content;animation:scroll var(--ticker-speed) linear infinite;will-change:transform}
+  .track.paused{animation-play-state:paused}
+  .group{display:flex;width:max-content;align-items:center}
+  .game{
+    position:relative;display:flex;align-items:center;height:29vh;min-height:188px;max-height:280px;
+    min-width:660px;margin-right:16px;border:1px solid var(--line);border-radius:22px;
+    background:linear-gradient(135deg,var(--panel),var(--panel2));overflow:hidden;
+    box-shadow:0 14px 38px rgba(0,0,0,.28)
+  }
+  .game.live{border-color:#743134}
+  .accent{
+    position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--team-accent,#5d6775)
+  }
+  .game-main{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:center;width:100%;padding:20px 24px 20px 30px}
+  .team{display:grid;grid-template-columns:66px minmax(0,1fr) auto;align-items:center;gap:14px}
+  .team + .team{border-left:1px solid #2c3440;padding-left:18px}
+  .logo{width:62px;height:62px;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.28))}
+  .team-info{min-width:0}
+  .abbr{font-size:clamp(24px,2vw,38px);font-weight:1000;white-space:nowrap}
+  .rank{font-size:.54em;vertical-align:top;color:#f8d66d;margin-right:4px}
+  .sub{margin-top:4px;font-size:14px;color:var(--muted);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .score{font-size:clamp(42px,4vw,72px);font-weight:1000;line-height:1;font-variant-numeric:tabular-nums;min-width:78px;text-align:right}
+  .poss{display:inline-block;margin-left:7px;font-size:12px;color:#ffd166}
+  .game-meta{
+    position:absolute;left:28px;right:20px;top:12px;display:flex;justify-content:space-between;align-items:center;
+    font-size:12px;font-weight:900;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;pointer-events:none
+  }
+  .game-main{padding-top:38px}
+  .live-pill{background:var(--live);color:white;border-radius:999px;padding:4px 8px}
+  .footer{
+    height:8vh;min-height:50px;display:flex;align-items:center;gap:18px;padding:0 2vw;
+    border-top:1px solid var(--line);background:#080a0e;color:var(--muted);font-size:14px
+  }
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ok);margin-right:7px}
+  .dot.err{background:var(--live)}
+  .footer .right{margin-left:auto;text-align:right}
+  .toast{
+    position:fixed;right:20px;bottom:72px;background:#1a2230;border:1px solid #3a465b;color:#fff;border-radius:12px;
+    padding:12px 16px;display:none;z-index:30
+  }
+  .empty{padding-left:4vw;color:var(--muted);font-size:28px;font-weight:900}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media(max-width:900px){
+    .controls button{padding:8px;font-size:12px}
+    .clock{display:none}
+    .game{min-width:560px}
+    .rail-label{width:92px;min-width:92px}
+    .viewport{left:92px}
+    .team{grid-template-columns:54px minmax(0,1fr) auto}
+    .logo{width:50px;height:50px}
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="title">FOOTBALL LIVE <small>NFL + COLLEGE</small></div>
+    <div class="controls">
+      <button id="bothBtn" class="active">BOTH</button>
+      <button id="nflBtn">NFL</button>
+      <button id="cfbBtn">COLLEGE</button>
+      <button id="top25Btn">TOP 25: OFF</button>
+      <button id="pauseBtn">PAUSE</button>
+      <button id="speedBtn">SPEED: 2</button>
+      <button id="fullBtn">FULLSCREEN</button>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+
+  <main class="ticker-wrap">
+    <div class="rail-label">
+      <strong id="railLeague">ALL</strong>
+      <span>FOOTBALL</span>
+    </div>
+    <div class="viewport">
+      <div id="track" class="track"><div class="empty">Loading football…</div></div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span id="health"><span class="dot"></span>Connecting</span>
+    <span id="updated">Last update: —</span>
+    <span class="right">Auto-refresh 30 sec • TV-friendly continuous ribbon</span>
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+(() => {
+  const NFL_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?limit=100';
+  const CFB_URL='https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80&limit=200';
+  const REFRESH_MS=30000;
+
+  let nfl=[], cfb=[], mode='both', top25=false, speed=2, paused=false;
+
+  const $=id=>document.getElementById(id);
+  const track=$('track');
+
+  function esc(v=''){
+    return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function rank(c){
+    const r=c?.curatedRank?.current;
+    return Number.isFinite(r)&&r>0&&r<=25?r:null;
+  }
+
+  function record(c){
+    return c?.records?.[0]?.summary || '';
+  }
+
+  function color(c){
+    const raw=c?.team?.color || c?.team?.alternateColor || '';
+    return raw ? '#'+raw.replace('#','') : '#5d6775';
+  }
+
+  function possession(comp,c){
+    const poss = comp?.situation?.possession;
+    if(!poss) return false;
+    return c?.id===poss || c?.team?.id===poss;
+  }
+
+  function spread(comp){
+    const o=comp?.odds?.[0];
+    if(!o) return '';
+    return o.details || o.spread || '';
+  }
+
+  function statusText(info){
+    if(info.state==='pre'){
+      return info.start.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+' • '+
+             info.start.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    }
+    if(info.completed) return 'FINAL';
+    return info.detail || 'LIVE';
+  }
+
+  function normalize(ev,league){
+    const comp=ev?.competitions?.[0]||{};
+    const cs=comp.competitors||[];
+    const away=cs.find(x=>x.homeAway==='away')||cs[0]||{};
+    const home=cs.find(x=>x.homeAway==='home')||cs[1]||{};
+    const state=ev?.status?.type?.state||'pre';
+    const completed=!!ev?.status?.type?.completed;
+    return {
+      league,ev,comp,away,home,state,completed,
+      live:state==='in'&&!completed,
+      detail:ev?.status?.type?.shortDetail||ev?.status?.type?.detail||'',
+      start:new Date(ev?.date),
+      broadcast:comp?.broadcasts?.[0]?.names?.[0]||''
+    };
+  }
+
+  function priority(x){
+    if(x.live) return 0;
+    if(x.state==='pre') return 1;
+    return 2;
+  }
+
+  function teamHtml(c,comp){
+    const t=c?.team||{};
+    const logo=t.logo||t?.logos?.[0]?.href||'';
+    const name=t.abbreviation||t.shortDisplayName||t.displayName||'TBD';
+    const r=rank(c), rec=record(c), hasPoss=possession(comp,c);
+    const score=(c?.score!==undefined&&c?.score!==null&&c?.score!=='')?c.score:'—';
+    return `<div class="team">
+      ${logo?`<img class="logo" src="${esc(logo)}" alt="">`:'<div></div>'}
+      <div class="team-info">
+        <div class="abbr">${r?`<span class="rank">${r}</span>`:''}${esc(name)}${hasPoss?'<span class="poss">●</span>':''}</div>
+        <div class="sub">${esc(rec || t.shortDisplayName || '')}</div>
+      </div>
+      <div class="score">${esc(score)}</div>
+    </div>`;
+  }
+
+  function card(x){
+    const line=spread(x.comp);
+    const metaLeft=x.live?'<span class="live-pill">LIVE</span>':esc(x.league);
+    const parts=[statusText(x)];
+    if(x.broadcast) parts.push(x.broadcast);
+    if(line) parts.push(line);
+    const accent=color(x.home);
+    return `<article class="game ${x.live?'live':''}" style="--team-accent:${esc(accent)}">
+      <div class="accent"></div>
+      <div class="game-meta">
+        <span>${metaLeft}</span>
+        <span>${esc(parts.join(' • '))}</span>
+      </div>
+      <div class="game-main">
+        ${teamHtml(x.away,x.comp)}
+        ${teamHtml(x.home,x.comp)}
+      </div>
+    </article>`;
+  }
+
+  function data(){
+    let arr=[];
+    if(mode==='both'||mode==='nfl') arr.push(...nfl.map(e=>normalize(e,'NFL')));
+    if(mode==='both'||mode==='cfb') arr.push(...cfb.map(e=>normalize(e,'CFB')));
+    if(top25) arr=arr.filter(x=>x.league==='NFL'||rank(x.away)||rank(x.home));
+    arr.sort((a,b)=>priority(a)-priority(b)||a.start-b.start);
+    return arr;
+  }
+
+  function render(){
+    const arr=data();
+    $('railLeague').textContent=mode==='nfl'?'NFL':mode==='cfb'?'CFB':'ALL';
+    document.querySelectorAll('#bothBtn,#nflBtn,#cfbBtn').forEach(b=>b.classList.remove('active'));
+    $({both:'bothBtn',nfl:'nflBtn',cfb:'cfbBtn'}[mode]).classList.add('active');
+    $('top25Btn').classList.toggle('active',top25);
+    $('top25Btn').textContent=`TOP 25: ${top25?'ON':'OFF'}`;
+    $('pauseBtn').classList.toggle('active',paused);
+    $('pauseBtn').textContent=paused?'RESUME':'PAUSE';
+
+    if(!arr.length){
+      track.innerHTML='<div class="empty">No games in the current scoreboard window.</div>';
+      track.style.animation='none';
+      return;
+    }
+
+    const cards=arr.map(card).join('');
+    track.innerHTML=`<div class="group">${cards}</div><div class="group" aria-hidden="true">${cards}</div>`;
+    track.style.animation='';
+    setSpeed();
+    track.classList.toggle('paused',paused);
+  }
+
+  function setSpeed(){
+    const sec={1:110,2:72,3:48,4:30}[speed]||72;
+    document.documentElement.style.setProperty('--ticker-speed',sec+'s');
+    $('speedBtn').textContent=`SPEED: ${speed}`;
+  }
+
+  async function fetchJson(url){
+    const r=await fetch(url,{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  async function refresh(){
+    const res=await Promise.allSettled([fetchJson(NFL_URL),fetchJson(CFB_URL)]);
+    let ok=0, fail=[];
+    if(res[0].status==='fulfilled'){nfl=res[0].value?.events||[];ok++;} else fail.push('NFL');
+    if(res[1].status==='fulfilled'){cfb=res[1].value?.events||[];ok++;} else fail.push('College');
+
+    const now=new Date();
+    if(ok){
+      $('updated').textContent='Last update: '+now.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});
+    }
+    if(ok===2) $('health').innerHTML='<span class="dot"></span>Live feeds connected';
+    else if(ok===1) $('health').innerHTML=`<span class="dot err"></span>${esc(fail[0])} feed unavailable`;
+    else $('health').innerHTML='<span class="dot err"></span>Feeds unavailable — check internet/browser';
+
+    render();
+  }
+
+  function toast(msg){
+    const t=$('toast');t.textContent=msg;t.style.display='block';
+    setTimeout(()=>t.style.display='none',2500);
+  }
+
+  $('bothBtn').onclick=()=>{mode='both';render()};
+  $('nflBtn').onclick=()=>{mode='nfl';render()};
+  $('cfbBtn').onclick=()=>{mode='cfb';render()};
+  $('top25Btn').onclick=()=>{top25=!top25;render()};
+  $('pauseBtn').onclick=()=>{paused=!paused;render()};
+  $('speedBtn').onclick=()=>{speed=speed%4+1;setSpeed()};
+  $('fullBtn').onclick=async()=>{
+    try{
+      if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(e){toast('Fullscreen blocked here. Use the browser menu instead.')}
+  };
+
+  setInterval(()=>$('clock').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),1000);
+  setInterval(refresh,REFRESH_MS);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
+  refresh();
+})();
+</script>
+</body>
+</html>
